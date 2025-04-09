@@ -1,1 +1,46 @@
+# OS-specific
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.cache/
+*.swp
+*.swo
+*.bak
+
+
+# Build output
+out/
+
+# Env and config
 .env
+.env.local
+.env.*.local
+
+# Bytecode / cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Environment variables
+.env
+.env.*
+
+
+# Pydantic and mypy cache
+.mypy_cache/
+.pytest_cache/
+
+# VS Code
+.vscode/
+
+# JetBrains
+.idea/
+*.iml
