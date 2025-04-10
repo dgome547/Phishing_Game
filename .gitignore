@@ -5,7 +5,7 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 .cache/
-.json
+
 *.swp
 *.swo
 *.bak
@@ -13,6 +13,7 @@ $RECYCLE.BIN/
 
 # Build output
 out/
+data/leaderboard.json
 
 # Env and config
 .env
