@@ -2,7 +2,7 @@ import time
 import os
 import random
 import json
-from config.settings import get_response
+from config.settings import generate_scenarios_with_gemini
 from datetime import datetime
 
 class PhishingGame:
@@ -542,5 +542,8 @@ This is legitimate! Here's why:
 
 
 if __name__ == "__main__":
-    game = PhishingGame()
-    game.play_game()
+    # game = PhishingGame()
+    # game.play_game()
+
+    
+    generate_scenarios_with_gemini()
