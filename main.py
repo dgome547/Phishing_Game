@@ -69,8 +69,8 @@ class PhishingGameGUI:
     
     def load_leaderboard(self):
         try:
-            if os.path.exists("leaderboard.json"):
-                with open("leaderboard.json", "r") as file:
+            if os.path.exists("data/leaderboard.json"):
+                with open("data/leaderboard.json", "r") as file:
                     self.leaderboard = json.load(file)
         except Exception as e:
             print(f"Error loading leaderboard: {e}")
@@ -78,7 +78,8 @@ class PhishingGameGUI:
     
     def save_leaderboard(self):
         try:
-            with open("leaderboard.json", "w") as file:
+            os.makedirs("data", exist_ok=True)  # Ensure 'data/' exists
+            with open("data/leaderboard.json", "w") as file:
                 json.dump(self.leaderboard, file)
         except Exception as e:
             print(f"Error saving leaderboard: {e}")

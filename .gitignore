@@ -5,6 +5,7 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 .cache/
+.json
 *.swp
 *.swo
 *.bak
