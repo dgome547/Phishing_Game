@@ -11,6 +11,7 @@ import requests
 from PIL import Image, ImageTk
 import io
 import base64
+from config.settings import generate_scenarios
 
 
 class PhishingGameGUI:
@@ -35,7 +36,6 @@ class PhishingGameGUI:
         self.timer_running = False
         self.timer_value = 0
         self.use_gemini = False
-        self.gemini_api_key = ""
         
         # Create widgets
         self.create_widgets()
@@ -51,8 +51,8 @@ class PhishingGameGUI:
         self.content_frame = ttk.Frame(self.main_frame)
         self.content_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Timer label
-        self.timer_label = ttk.Label(self.main_frame, text="Time: 0s", font=("Helvetica", 12))
+        # Timer label (bold)
+        self.timer_label = ttk.Label(self.main_frame, text="Time: 0s", font=("Helvetica", 12, "bold"))
         self.timer_label.pack(anchor=tk.NE, padx=10, pady=5)
         
         # Status frame for score and progress
@@ -192,16 +192,15 @@ class PhishingGameGUI:
                        value="premade").pack(anchor=tk.W, padx=20)
         ttk.Radiobutton(source_frame, text="Generate with Gemini API", variable=self.scenario_source, 
                        value="gemini").pack(anchor=tk.W, padx=20)
-        
-        # API Key input
-        api_frame = ttk.Frame(welcome_frame)
-        api_frame.pack(pady=10, fill=tk.X)
-        
-        ttk.Label(api_frame, text="Gemini API Key (if using Gemini):", font=("Helvetica", 12)).pack(anchor=tk.W, pady=5)
-        self.api_entry = ttk.Entry(api_frame, width=40, font=("Helvetica", 12))
-        self.api_entry.pack(anchor=tk.W, padx=20, fill=tk.X)
-        if self.gemini_api_key:
-            self.api_entry.insert(0, self.gemini_api_key)
+
+        # Game mode options
+        mode_frame = ttk.Frame(welcome_frame)
+        mode_frame.pack(pady=10)
+
+        self.game_mode = tk.StringVar(value="unlimited")
+        ttk.Label(mode_frame, text="Game Mode:", font=("Helvetica", 12)).pack(anchor=tk.W, pady=5)
+        ttk.Radiobutton(mode_frame, text="Unlimited Time", variable=self.game_mode, value="unlimited").pack(anchor=tk.W, padx=20)
+        ttk.Radiobutton(mode_frame, text="1-Minute Timed Mode", variable=self.game_mode, value="timed").pack(anchor=tk.W, padx=20)
         
         # Training mode option
         training_frame = ttk.Frame(welcome_frame)
@@ -225,28 +224,33 @@ class PhishingGameGUI:
         if not self.player_name:
             messagebox.showwarning("Missing Name", "Please enter your name to continue.")
             return
-        
+
         # Check for API key if using Gemini
         self.use_gemini = (self.scenario_source.get() == "gemini")
-        if self.use_gemini:
-            self.gemini_api_key = self.api_entry.get().strip()
-            if not self.gemini_api_key:
-                messagebox.showwarning("Missing API Key", "Please enter a Gemini API key to use Gemini for scenarios.")
-                return
-        
+        # (Removed premature return here)
+
         # Set training mode
         self.training_mode = self.training_var.get()
-        
+
+        # Set game mode (timed/unlimited)
+        self.is_timed_mode = self.game_mode.get() == "timed"
+        self.countdown_seconds = 60 if self.is_timed_mode else None
+
+        if self.is_timed_mode:
+            self.start_time = time.time()
+            self.timer_running = True
+            self.update_timer()
+
         # Initialize game
         self.score = 0
         self.correct_answers = 0
         self.incorrect_answers = 0
         self.total_time = 0
         self.scenario_index = 0
-        
+
         # Update labels
         self.score_label.config(text="Score: 0")
-        
+
         # Load scenarios
         if self.use_gemini:
             # Show loading screen while generating scenarios
@@ -256,7 +260,7 @@ class PhishingGameGUI:
             self.scenarios = self.get_premade_scenarios()
             random.shuffle(self.scenarios)
             self.progress_label.config(text=f"Progress: 0/{len(self.scenarios)}")
-            
+
             # If training mode is enabled, show training intro
             if self.training_mode:
                 self.show_training_intro()
@@ -273,55 +277,25 @@ class PhishingGameGUI:
         
         ttk.Label(loading_frame, text=message, font=("Helvetica", 14)).pack(pady=20)
         
-        # Create a progress bar
-        progress = ttk.Progressbar(loading_frame, mode="indeterminate", length=300)
-        progress.pack(pady=20)
-        progress.start()
+        # Create a determinate progress bar
+        self.progress_bar = ttk.Progressbar(loading_frame, mode="determinate", length=300, maximum=10)
+        self.progress_bar.pack(pady=20)
+        self.progress_bar["value"] = 0
         
         # Force update to show loading screen
         self.root.update()
     
     def generate_scenarios_with_gemini(self):
         try:
-            # Number of scenarios to generate
-            num_scenarios = 10
-            
-            generated_scenarios = []
-            for i in range(num_scenarios):
-                # Generate one legitimate and one phishing email
-                for is_phishing in [True, False]:
-                    scenario_type = "phishing" if is_phishing else "legitimate"
-                    
-                    prompt = f"""Generate a realistic {scenario_type} email scenario for a phishing awareness training game.
-                    
-                    The email should {'have clear phishing indicators' if is_phishing else 'be completely legitimate'}.
-                    
-                    Return your response in JSON format with the following structure:
-                    {{
-                        "email": "The full email content with From, Subject, and Body",
-                        "is_phishing": {"true" if is_phishing else "false"},
-                        "explanation": "A detailed explanation of why this is {'a phishing attempt' if is_phishing else 'legitimate'}, pointing out specific elements."
-                    }}
-                    
-                    {'Include typical phishing red flags like suspicious sender address, urgent language, suspicious links, grammar errors, or requests for sensitive information.' if is_phishing else 'Make it look like a genuine email from a real company with proper formatting, no suspicious elements, and realistic content.'}
-                    
-                    Only return the JSON object, nothing else.
-                    """
-                    
-                    # Call Gemini API
-                    scenario = self.call_gemini_api(prompt)
-                    if scenario:
-                        generated_scenarios.append(scenario)
-            
-            # Set the scenarios and continue
-            self.scenarios = generated_scenarios
+            from config.settings import generate_scenarios
+            self.scenarios = []
+            for i in range(10):
+                new = generate_scenarios(1)
+                self.scenarios.extend(new)
+                self.root.after(0, lambda v=i+1: self.progress_bar.config(value=v))
             random.shuffle(self.scenarios)
-            
-            # Switch back to main thread for UI updates
             self.root.after(0, self.after_scenarios_loaded)
-            
         except Exception as e:
-            # Show error on main thread
             self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to generate scenarios: {str(e)}"))
             self.root.after(0, self.show_welcome_screen)
     
@@ -334,58 +308,6 @@ class PhishingGameGUI:
         else:
             self.display_next_scenario()
     
-    def call_gemini_api(self, prompt):
-        # Gemini API endpoint
-        url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
-        
-        # Request headers
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        # Request data
-        data = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "text": prompt
-                        }
-                    ]
-                }
-            ]
-        }
-        
-        # Add API key as query parameter
-        params = {
-            "key": self.gemini_api_key
-        }
-        
-        # Make the request
-        response = requests.post(url, headers=headers, json=data, params=params)
-        
-        if response.status_code == 200:
-            # Parse the response
-            result = response.json()
-            
-            # Extract text from the response
-            if "candidates" in result and len(result["candidates"]) > 0:
-                text = result["candidates"][0]["content"]["parts"][0]["text"]
-                
-                # Extract JSON from text using regex
-                match = re.search(r'({.*})', text.replace('\n', ' '), re.DOTALL)
-                if match:
-                    try:
-                        scenario_json = json.loads(match.group(1))
-                        # Validate JSON structure
-                        if all(key in scenario_json for key in ["email", "is_phishing", "explanation"]):
-                            return scenario_json
-                    except json.JSONDecodeError:
-                        pass
-            
-            raise Exception(f"Failed to parse Gemini response: {response.text}")
-        else:
-            raise Exception(f"Gemini API request failed with status code {response.status_code}: {response.text}")
     
     def show_training_intro(self):
         # Clear current content
@@ -718,202 +640,97 @@ Need help? Visit the Dropbox Help Center.
         style.configure("Green.TButton", background="green")
         style.configure("Red.TButton", background="red")
         
-        legitimate_btn = ttk.Button(button_frame, text="Legitimate Email", 
-                                  command=lambda: self.make_decision("L"), width=20)
-        legitimate_btn.pack(side=tk.LEFT, padx=10)
+        legitimate_btn = ttk.Button(button_frame, text="Legitimate Email", command=lambda: self.process_answer(False), width=20)
+        legitimate_btn.pack(side=tk.LEFT, padx=20)
+
+        phishing_btn = ttk.Button(button_frame, text="Phishing Email", command=lambda: self.process_answer(True), width=20)
+        phishing_btn.pack(side=tk.LEFT, padx=20)
+
         
-        phishing_btn = ttk.Button(button_frame, text="Phishing Attempt", 
-                                 command=lambda: self.make_decision("P"), width=20)
-        phishing_btn.pack(side=tk.LEFT, padx=10)
-        
-        # Start the timer
-        self.start_time = time.time()
-        self.timer_running = True
-        self.timer_value = 0
-        self.update_timer()
-        
-        # Update progress label
-        self.progress_label.config(text=f"Progress: {self.scenario_index + 1}/{len(self.scenarios)}")
-    
+
     def update_timer(self):
         if self.timer_running:
-            elapsed = time.time() - self.start_time
+            elapsed = int(time.time() - self.start_time)
             self.timer_value = elapsed
-            self.timer_label.config(text=f"Time: {elapsed:.1f}s")
-            self.root.after(100, self.update_timer)
-    
-    def make_decision(self, choice):
-        # Stop the timer
-        self.timer_running = False
-        time_taken = self.timer_value
-        self.total_time += time_taken
-
-
-    def make_decision(self, choice):
-            # Stop the timer
-            self.timer_running = False
-            time_taken = self.timer_value
-            self.total_time += time_taken
-            
-            # Check if the decision is correct
-            is_phishing = self.current_scenario["is_phishing"]
-            is_correct = (choice == 'P' and is_phishing) or (choice == 'L' and not is_phishing)
-            
-            # Calculate score
-            score_earned = self.calculate_score(is_correct, time_taken)
-            self.score += score_earned
-            
-            # Update stats
-            if is_correct:
-                self.correct_answers += 1
+            if hasattr(self, "is_timed_mode") and self.is_timed_mode:
+                remaining = self.countdown_seconds - elapsed
+                self.timer_label.config(text=f"Time Left: {remaining}s")
+                if remaining <= 0:
+                    self.timer_running = False
+                    self.show_game_results()
+                    return
             else:
-                self.incorrect_answers += 1
-            
-            # Update score label
-            self.score_label.config(text=f"Score: {self.score}")
-            
-            # Show feedback
-            self.show_feedback(is_correct, time_taken, score_earned)
-        
-    def calculate_score(self, is_correct, time_taken):
-        # Base score
-        base_score = 100 if is_correct else 0
-        
-        # Time bonus - faster correct answers get more points
-        # Max bonus of 50 points for answering in under 15 seconds
-        time_bonus = 0
-        if is_correct:
-            if time_taken < 15:
-                time_bonus = 50
-            elif time_taken < 30:
-                time_bonus = 30
-            elif time_taken < 45:
-                time_bonus = 15
-        
-        return base_score + time_bonus
+                self.timer_label.config(text=f"Time: {elapsed}s")
+            self.root.after(1000, self.update_timer)
 
-    def show_feedback(self, is_correct, time_taken, score_earned):
-        # Clear current content
-        for widget in self.content_frame.winfo_children():
-            widget.destroy()
-        
-        feedback_frame = ttk.Frame(self.content_frame)
-        feedback_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        
-        # Result heading
-        if is_correct:
-            result_text = "✓ CORRECT!"
-            result_color = "green"
-        else:
-            result_text = "✗ INCORRECT!"
-            result_color = "red"
-        
-        result_label = ttk.Label(feedback_frame, text=result_text, font=("Helvetica", 20, "bold"))
-        result_label.pack(pady=10)
-        
-        # Score and time info
-        if is_correct:
-            ttk.Label(feedback_frame, text=f"You earned {score_earned} points!", 
-                        font=("Helvetica", 14)).pack(pady=5)
-        ttk.Label(feedback_frame, text=f"Time taken: {time_taken:.2f} seconds", 
-                    font=("Helvetica", 12)).pack(pady=5)
-        
-        # Explanation
-        explanation_frame = ttk.LabelFrame(feedback_frame, text="Explanation", padding=10)
-        explanation_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-        
-        explanation_text = scrolledtext.ScrolledText(explanation_frame, wrap=tk.WORD, 
-                                                    width=70, height=10, font=("Helvetica", 11))
-        explanation_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        explanation_text.insert(tk.END, self.current_scenario["explanation"])
-        explanation_text.config(state=tk.DISABLED)
-        
-        # Email recap
-        email_frame = ttk.LabelFrame(feedback_frame, text="Email Recap", padding=10)
-        email_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-        
-        email_content = scrolledtext.ScrolledText(email_frame, wrap=tk.WORD, 
-                                                width=70, height=6, font=("Courier", 10))
-        email_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # Just show the From and Subject lines for recap
-        email_lines = self.current_scenario["email"].strip().split("\n")
-        if len(email_lines) >= 2:
-            email_recap = "\n".join(email_lines[:2])
-            email_content.insert(tk.END, email_recap)
-        else:
-            email_content.insert(tk.END, self.current_scenario["email"])
-        email_content.config(state=tk.DISABLED)
-        
-        # Button to continue
-        ttk.Button(feedback_frame, text="Continue", command=self.next_scenario, width=20).pack(pady=20)
+    def process_answer(self, guessed_phishing):
+        elapsed_time = int(time.time() - self.start_time)
+        self.total_time += elapsed_time
 
-    def next_scenario(self):
+        correct = self.current_scenario["is_phishing"] == guessed_phishing
+
+        if correct:
+            self.score += 10
+            self.correct_answers += 1
+        else:
+            self.incorrect_answers += 1
+
+        self.score_label.config(text=f"Score: {self.score}")
         self.scenario_index += 1
+        self.progress_label.config(text=f"Progress: {self.scenario_index}/{len(self.scenarios)}")
+
         self.display_next_scenario()
 
     def show_game_results(self):
-        # Clear current content
+        # Clear content
         for widget in self.content_frame.winfo_children():
             widget.destroy()
-        
+
         results_frame = ttk.Frame(self.content_frame)
         results_frame.pack(fill=tk.BOTH, expand=True, pady=20)
-        
-        # Game over heading
-        ttk.Label(results_frame, text=f"Game Over, {self.player_name}!", 
-                    font=("Helvetica", 20, "bold")).pack(pady=10)
-        
-        # Results
-        accuracy = (self.correct_answers / max(1, len(self.scenarios))) * 100
-        avg_time = self.total_time / max(1, len(self.scenarios))
-        
-        results_text = f"""
-        Final Score: {self.score}
 
-        Correct Answers: {self.correct_answers}/{len(self.scenarios)} ({accuracy:.1f}%)
+        ttk.Label(results_frame, text="GAME OVER", font=("Helvetica", 20, "bold")).pack(pady=10)
+        ttk.Label(results_frame, text=f"Final Score: {self.score}", font=("Helvetica", 14)).pack(pady=5)
+        ttk.Label(results_frame, text=f"Correct Answers: {self.correct_answers}", font=("Helvetica", 14)).pack(pady=5)
+        ttk.Label(results_frame, text=f"Incorrect Answers: {self.incorrect_answers}", font=("Helvetica", 14)).pack(pady=5)
+        ttk.Label(results_frame, text=f"Average Response Time: {round(self.total_time / max(1, (self.correct_answers + self.incorrect_answers)), 2)}s", font=("Helvetica", 14)).pack(pady=5)
 
-        Average Response Time: {avg_time:.2f} seconds
-            """
-        
-        results_box = scrolledtext.ScrolledText(results_frame, wrap=tk.WORD, 
-                                                width=50, height=8, font=("Helvetica", 12))
-        results_box.pack(padx=20, pady=10)
-        results_box.insert(tk.END, results_text)
-        results_box.config(state=tk.DISABLED)
-        
-        # Expert feedback
-        feedback_frame = ttk.LabelFrame(results_frame, text="Expert Feedback", padding=10)
-        feedback_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        if accuracy >= 90:
-            feedback = "Excellent! You're a phishing detection expert!"
-        elif accuracy >= 70:
-            feedback = "Good job! You're getting better at spotting phishing attempts."
+        # Total time formatted (timed mode fix)
+        if hasattr(self, "is_timed_mode") and self.is_timed_mode:
+            total_elapsed = self.countdown_seconds - max(0, self.countdown_seconds - self.timer_value)
+        else:
+            total_elapsed = self.timer_value
+        total_minutes, total_seconds = divmod(total_elapsed, 60)
+        total_time_formatted = f"{total_minutes:02}:{total_seconds:02}"
+        ttk.Label(results_frame, text=f"Total Time Taken: {total_time_formatted}", font=("Helvetica", 14)).pack(pady=5)
+
+        feedback_frame = ttk.Frame(results_frame)
+        feedback_frame.pack(pady=10)
+
+        if self.correct_answers >= len(self.scenarios) * 0.7:
+            feedback = "Great job! You have a good eye for spotting phishing attempts."
         else:
             feedback = "Keep practicing! Phishing can be tricky to spot."
-        
+
         ttk.Label(feedback_frame, text=feedback, font=("Helvetica", 12)).pack(pady=10)
-        
+
         # Button frame
         button_frame = ttk.Frame(results_frame)
         button_frame.pack(pady=20)
-        
-        # Add to leaderboard
-        self.add_to_leaderboard()
-        
-        ttk.Button(button_frame, text="View Leaderboard", 
-                    command=self.display_leaderboard, width=20).pack(side=tk.LEFT, padx=10)
-        ttk.Button(button_frame, text="Play Again", 
-                    command=self.show_welcome_screen, width=20).pack(side=tk.LEFT, padx=10)
-        ttk.Button(button_frame, text="Exit", 
-                    command=self.root.destroy, width=20).pack(side=tk.LEFT, padx=10)
 
-        ...
+        self.add_to_leaderboard()
+
+        ttk.Button(button_frame, text="View Leaderboard", command=self.display_leaderboard, width=20).pack(side=tk.LEFT, padx=10)
+        ttk.Button(button_frame, text="Play Again", command=self.show_welcome_screen, width=20).pack(side=tk.LEFT, padx=10)
+        ttk.Button(button_frame, text="Exit", command=self.root.destroy, width=20).pack(side=tk.LEFT, padx=10)
 
 def main():
     root = tk.Tk()
     app = PhishingGameGUI(root)
+    try:
+        root.iconbitmap("assets/icon.ico")
+    except:
+        pass  # Gracefully ignore if icon file is missing
     root.mainloop()
 
 if __name__ == "__main__":

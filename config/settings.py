@@ -4,37 +4,25 @@ from google import genai
 from dotenv import load_dotenv
 import os
 import json
+import time
+import re
 
 load_dotenv()
-# def get_response():
-#     KEY = os.getenv("API_KEY")
-#     model= "gemini-2.0-flash"
-#     prompt = "Explain how AI works in a few words"
 
-#     client = genai.Client(api_key=KEY)
 
-#     response = client.models.generate_content(
-#         model=model, contents=prompt
-#     )
-#     return response.text
+def generate_scenarios(n=2):
+    KEY = os.getenv("API_KEY")
+    model = "gemini-2.0-flash"
+    client = genai.Client(api_key=KEY)
 
-def generate_scenarios_with_gemini(self):
-    try:
+    scenarios = []
+    name = "Robert"
 
-        num_scenarios = 10
-        generated_scenarios = []
+    for i in range(n):
+        is_phishing = (i % 2 == 0)
+        scenario_type = "phishing" if is_phishing else "legitimate"
 
-        KEY = os.getenv("API_KEY")
-        model_name = "gemini-2.0-flash"
-        genai.configure(api_key=KEY)
-
-        model = genai.GenerativeModel(model_name)
-
-        for _ in range(num_scenarios):
-            for is_phishing in [True, False]:
-                scenario_type = "phishing" if is_phishing else "legitimate"
-
-                prompt = f"""Generate a realistic {scenario_type} email scenario for a phishing awareness training game.
+        prompt = f"""Generate a realistic {scenario_type} email scenario for a phishing awareness training game.
 
 The email should {'have clear phishing indicators' if is_phishing else 'be completely legitimate'}.
 
@@ -47,32 +35,41 @@ Return your response in JSON format with the following structure:
 
 {'Include typical phishing red flags like suspicious sender address, urgent language, suspicious links, grammar errors, or requests for sensitive information.' if is_phishing else 'Make it look like a genuine email from a real company with proper formatting, no suspicious elements, and realistic content.'}
 
-Only return the JSON object, nothing else."""
+Additional Information: Participant name is {name}
+Do not use Markdown formatting in the output. Return plain JSON only.
+"""
 
-                response = model.generate_content(prompt)
+        try:
+            response = client.models.generate_content(model=model, contents=prompt)
+            print(f"Raw response for iteration {i+1}:\n{response.text}\n")
+            try:
+                raw = response.text.strip()
+                json_str = re.search(r'\{.*\}', raw, re.DOTALL).group()
+                parsed = json.loads(json_str)
+            except Exception as e:
+                print(f"Error parsing JSON in iteration {i+1}: {e}")
+                continue
 
-                if response and response.text:
-                    try:
-                        parsed = json.loads(response.text)
-                        generated_scenarios.append(parsed)
-                    except json.JSONDecodeError:
-                        print("Invalid JSON from Gemini:")
-                        print(response.text)
+            # Flatten email field if it's a dictionary
+            if isinstance(parsed.get("email"), dict):
+                email_data = parsed["email"]
+                parsed["email"] = f"From: {email_data.get('From', '')}\nSubject: {email_data.get('Subject', '')}\n\n{email_data.get('Body', '')}"
 
-        self.scenarios = generated_scenarios
-        random.shuffle(self.scenarios)
+            scenarios.append(parsed)
 
+        except Exception as e:
+            print(f"Error on iteration {i+1}: {e}")
 
-        for idx, scenario in enumerate(generated_scenarios, start=1):
-            print(f"\n--- Scenario {idx} ---")
-            print("Email:\n", scenario.get("email", "N/A"))
-            print("Is Phishing:", scenario.get("is_phishing", "N/A"))
-            print("Explanation:\n", scenario.get("explanation", "N/A"))
+        # SLEEP PREVENTS TIMEOUT FROM GOOGLE
+        time.sleep(2)
+
+    return scenarios
 
 
-
-        self.root.after(0, self.after_scenarios_loaded)
-
-    except Exception as e:
-        self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to generate scenarios: {str(e)}"))
-        self.root.after(0, self.show_welcome_screen)
+# if __name__ == "__main__":
+#     results = generate_scenarios(10)
+#     for i, r in enumerate(results, 1):
+#         print(f"\n--- Scenario {i} ---")
+#         print("EMAIL:\n", r.get("email"))
+#         print("PHISHING:", r.get("is_phishing"))
+#         print("EXPLANATION:\n", r.get("explanation"))
