@@ -6,12 +6,10 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 from datetime import datetime
 import threading
-import re
-import requests
 from PIL import Image, ImageTk
-import io
-import base64
 from config.settings import generate_scenarios
+from config.scenarios import get_premade_scenarios
+
 
 
 class PhishingGameGUI:
@@ -78,7 +76,7 @@ class PhishingGameGUI:
     
     def save_leaderboard(self):
         try:
-            os.makedirs("data", exist_ok=True)  # Ensure 'data/' exists
+            os.makedirs("data", exist_ok=True)  # Ensure 'data/' exists (very important 🫠)
             with open("data/leaderboard.json", "w") as file:
                 json.dump(self.leaderboard, file)
         except Exception as e:
@@ -225,9 +223,9 @@ class PhishingGameGUI:
             messagebox.showwarning("Missing Name", "Please enter your name to continue.")
             return
 
-        # Check for API key if using Gemini
+        # Check for API key 
         self.use_gemini = (self.scenario_source.get() == "gemini")
-        # (Removed premature return here)
+        # (Removed premature return here if it doesn't work put it back here)
 
         # Set training mode
         self.training_mode = self.training_var.get()
@@ -238,8 +236,12 @@ class PhishingGameGUI:
 
         if self.is_timed_mode:
             self.start_time = time.time()
+            self._last_answer_time = time.time()  
             self.timer_running = True
             self.update_timer()
+        else:
+            self.start_time = time.time()
+            self._last_answer_time = time.time()  
 
         # Initialize game
         self.score = 0
@@ -257,11 +259,11 @@ class PhishingGameGUI:
             self.show_loading_screen("Generating scenarios with Gemini API...")
             threading.Thread(target=self.generate_scenarios_with_gemini).start()
         else:
-            self.scenarios = self.get_premade_scenarios()
-            random.shuffle(self.scenarios)
+            all_scenarios = get_premade_scenarios()
+            self.scenarios = random.sample(all_scenarios, k=10)
             self.progress_label.config(text=f"Progress: 0/{len(self.scenarios)}")
 
-            # If training mode is enabled, show training intro
+            # If training mode is enabled -> show training intro
             if self.training_mode:
                 self.show_training_intro()
             else:
@@ -277,23 +279,22 @@ class PhishingGameGUI:
         
         ttk.Label(loading_frame, text=message, font=("Helvetica", 14)).pack(pady=20)
         
-        # Create a determinate progress bar
-        self.progress_bar = ttk.Progressbar(loading_frame, mode="determinate", length=300, maximum=10)
+        # Create an indeterminate progress bar
+        self.progress_bar = ttk.Progressbar(loading_frame, mode="indeterminate", length=300)
         self.progress_bar.pack(pady=20)
-        self.progress_bar["value"] = 0
+        self.progress_bar.start(10)
         
         # Force update to show loading screen
         self.root.update()
     
     def generate_scenarios_with_gemini(self):
         try:
+            from functools import partial
             from config.settings import generate_scenarios
-            self.scenarios = []
-            for i in range(10):
-                new = generate_scenarios(1)
-                self.scenarios.extend(new)
-                self.root.after(0, lambda v=i+1: self.progress_bar.config(value=v))
-            random.shuffle(self.scenarios)
+            # error with handling of first generation proposed fix of saving generations to txt
+            # using 11 scenarios for testing for now. 
+            self.scenarios = generate_scenarios(11)
+            self.root.after(0, self.progress_bar.stop)
             self.root.after(0, self.after_scenarios_loaded)
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to generate scenarios: {str(e)}"))
@@ -339,314 +340,66 @@ In training mode, we'll analyze each scenario together before you make your deci
         training_content.insert(tk.END, training_text)
         training_content.config(state=tk.DISABLED)
         
-        # Button to start
+        # Start Button
         ttk.Button(training_frame, text="Start Training", command=self.display_next_scenario).pack(pady=20)
     
-    def get_premade_scenarios(self):
-        scenarios = [
-            {
-                "email": """From: service@amaz0n.com
-Subject: Urgent: Your Account Has Been Compromised
-                
-Dear Valued Customer,
-                
-We have detected suspicious activity on your account. Your account has been temporarily suspended.
-                
-Please click the link below to verify your information and restore your account:
-http://amazonn-secure.com/verify
-                
-If you don't respond within 24 hours, your account will be permanently closed.
-                
-Amazon Security Team""",
-                "is_phishing": True,
-                "explanation": """This is a phishing attempt! Here are the red flags:
-1. The sender's email contains a zero instead of an 'o' (amaz0n.com)
-2. The link domain is misspelled (amazonn-secure.com)
-3. The message creates urgency with threats of account closure
-4. It asks you to click a suspicious link
-5. It doesn't address you by name"""
-            },
-            {
-                "email": """From: newsletter@spotify.com
-Subject: Your Monthly Spotify Recap
-                
-Hi there,
-                
-Here's your monthly listening summary:
-- You listened to 427 minutes of music this month
-- Your top artist was The Weeknd
-- Your favorite genre was Pop
-                
-Check out your personalized playlist based on your listening habits:
-https://open.spotify.com/playlist/recommendations
-                
-Enjoy the music!
-The Spotify Team""",
-                "is_phishing": False,
-                "explanation": """This is legitimate! Here's why:
-1. The sender's email is from the correct domain (spotify.com)
-2. The content is personalized based on your listening habits
-3. The link goes to the official Spotify domain
-4. There's no urgency or threats
-5. It doesn't ask for personal information"""
-            },
-            {
-                "email": """From: paypal-security@paypal-team.com
-Subject: PayPal: Confirm Your Recent Transaction
-                
-Dear PayPal User,
-                
-We've detected a unusual transaction on your account for $750.00 to "Online Electronics Store".
-                
-If you did not make this transaction, you must immediate verify your account details by clicking the link below:
-                
-https://paypal-secure-center.com/verify
-                
-Your account will be locked if you do not respond within 12 hours.
-                
-Security Department
-PayPal""",
-                "is_phishing": True,
-                "explanation": """This is a phishing attempt! Here are the red flags:
-1. The sender's email is not from the official PayPal domain (paypal.com)
-2. The domain "paypal-team.com" is suspicious
-3. The verification link goes to an unofficial website
-4. There are grammar errors ("a unusual transaction", "immediate verify")
-5. The message creates urgency with a time limit
-6. It doesn't address you by name"""
-            },
-            {
-                "email": """From: no-reply@linkedin.com
-Subject: John Smith has sent you a connection request
-                
-LinkedIn
-                
-John Smith has sent you a connection request
-                
-I'd like to add you to my professional network on LinkedIn.
-- John Smith, Senior Developer at Tech Solutions Inc.
-                
-[View profile]
-                
-You are receiving connection requests emails. Unsubscribe here.
-                
-© 2023 LinkedIn Corporation, 1000 W Maude Ave, Sunnyvale, CA 94085.""",
-                "is_phishing": False,
-                "explanation": """This is legitimate! Here's why:
-1. The sender's email is from the correct domain (linkedin.com)
-2. The format matches standard LinkedIn connection requests
-3. The message is specific about who sent the request
-4. It includes a normal LinkedIn footer with unsubscribe option
-5. There's no urgency or threats
-6. It doesn't ask for sensitive information"""
-            },
-            {
-                "email": """From: microsoftsupport@outlook-team.com
-Subject: Your Microsoft 365 subscription is expiring
-                
-MICROSOFT 365
-                
-Dear Customer,
-                
-Your Microsoft 365 subscription will expire in 2 days. To ensure no disruption to your service, please update your payment details urgently.
-                
-Click here to update your payment information: https://microsoft365-renewal.com
-                
-Note: Failure to update will result in immediate service termination.
-                
-Microsoft Support Team""",
-                "is_phishing": True,
-                "explanation": """This is a phishing attempt! Here are the red flags:
-1. The sender's email is not from Microsoft's official domain
-2. The domain "outlook-team.com" is suspicious
-3. The link goes to an unofficial website
-4. The message creates urgency
-5. It doesn't address you by name
-6. Microsoft typically sends subscription reminders well in advance"""
-            },
-            {
-                "email": """From: noreply@netflix.com
-Subject: Your Netflix bill
-                
-Your monthly Netflix subscription has been processed.
-                
-Billing date: April 3, 2023
-Amount: $14.99
-Next billing date: May 3, 2023
-                
-To view your receipt, visit netflix.com/YourAccount
-                
-Questions? Visit the Help Center: help.netflix.com
-                
-Netflix""",
-                "is_phishing": False,
-                "explanation": """This is legitimate! Here's why:
-1. The sender's email is from the correct domain (netflix.com)
-2. It's a standard billing notification with specific details
-3. The message directs you to the official Netflix website
-4. There's no urgency or threats
-5. It doesn't ask you to click suspicious links
-6. It offers legitimate help resources"""
-            },
-            {
-                "email": """From: support@applesecure.net
-Subject: Apple ID: Your account has been locked
-                
-Dear Customer,
-                
-Your Apple ID has been locked due to too many failed login attempts.
-                
-To unlock your account, please verify your information by clicking on the link below:
-                
-https://apple-id-unlock.com/verify
-                
-If you don't verify within 24 hours, your account will be permanently deleted.
-                
-Apple Support""",
-                "is_phishing": True,
-                "explanation": """This is a phishing attempt! Here are the red flags:
-1. The sender's email is not from Apple's official domain (apple.com)
-2. The domain "applesecure.net" is suspicious
-3. The verification link goes to an unofficial website
-4. The message creates urgency with threats of account deletion
-5. It doesn't address you by name
-6. Apple never threatens to delete accounts in this manner"""
-            },
-            {
-                "email": """From: billing@amazon.com
-Subject: Your Amazon.com order #112-7366937-2795436
-                
-Hello Rachel,
-                
-Thank you for your order. Your Amazon.com order #112-7366937-2795436 has shipped.
-                
-Your package was sent to:
-Rachel Johnson
-123 Main Street
-Springfield, IL 62704
-                
-You can track your package at: amazon.com/your-orders
-                
-Order Details:
-1x Book: "The Psychology of Money" - $15.99
-                
-Thank you for shopping with us.
-Amazon.com""",
-                "is_phishing": False,
-                "explanation": """This is legitimate! Here's why:
-1. The sender's email is from the correct domain (amazon.com)
-2. It includes specific order details with a genuine-looking order number
-3. It addresses the recipient by name
-4. The tracking link directs to the official Amazon website
-5. The message is informational with no urgency or threats
-6. It doesn't ask for sensitive information"""
-            },
-            {
-                "email": """From: service@bankofamerica-secure.com
-Subject: URGENT: Unusual activity detected on your account
-                
-BANK OF AMERICA
-                
-Dear Client,
-                
-We have detected unusual activity on your account. For your security, we have limited access to your online banking.
-                
-CLICK HERE TO VERIFY YOUR IDENTITY AND RESTORE ACCESS
-                
-If we don't hear from you within 24 hours, your account will remain restricted.
-                
-Bank of America Security Team""",
-                "is_phishing": True,
-                "explanation": """This is a phishing attempt! Here are the red flags:
-1. The sender's email is not from Bank of America's official domain
-2. The domain "bankofamerica-secure.com" is suspicious
-3. The "CLICK HERE" doesn't show the actual URL
-4. The message creates urgency with threats of continued restriction
-5. It doesn't address you by name
-6. Banks typically don't send emails with "CLICK HERE" buttons for security issues"""
-            },
-            {
-                "email": """From: no-reply@dropbox.com
-Subject: John shared "Project Proposal" with you
-                
-Dropbox
-                
-John Smith (john.smith@company.com) shared "Project Proposal" with you
-                
-View file
-                
-The link to view this file will expire in 30 days.
-                
-Need help? Visit the Dropbox Help Center.
-                
-© 2023 Dropbox""",
-                "is_phishing": False,
-                "explanation": """This is legitimate! Here's why:
-1. The sender's email is from the correct domain (dropbox.com)
-2. The format matches standard Dropbox file sharing notifications
-3. It includes specific details about who shared what
-4. It mentions a reasonable expiration period for the link
-5. It directs to legitimate help resources
-6. There's no urgency or threats"""
-            }
-        ]
-        return scenarios
+    
     
     def display_next_scenario(self):
         if self.scenario_index >= len(self.scenarios):
             self.show_game_results()
             return
-        
+
+        # Set per-question timer <<BEFORE>> setting current_scenario
+        self._last_answer_time = time.time()
         self.current_scenario = self.scenarios[self.scenario_index]
-        
+
         # Clear current content
         for widget in self.content_frame.winfo_children():
             widget.destroy()
-        
+
         scenario_frame = ttk.Frame(self.content_frame)
         scenario_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        
+
         # Scenario heading
-        ttk.Label(scenario_frame, text=f"Scenario {self.scenario_index + 1}/{len(self.scenarios)}", 
+        ttk.Label(scenario_frame, text=f"Scenario {self.scenario_index + 1}/{len(self.scenarios)}",
                  font=("Helvetica", 14, "bold")).pack(pady=10)
-        
+
         # Email content
         email_frame = ttk.LabelFrame(scenario_frame, text="Email", padding=10)
         email_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-        
+
         email_content = scrolledtext.ScrolledText(email_frame, wrap=tk.WORD, width=70, height=15, font=("Courier", 11))
         email_content.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         email_content.insert(tk.END, self.current_scenario["email"])
         email_content.config(state=tk.DISABLED)
-        
+
         # If training mode, show explanation first
         if self.training_mode:
             explanation_frame = ttk.LabelFrame(scenario_frame, text="Analysis", padding=10)
             explanation_frame.pack(fill=tk.X, padx=20, pady=10)
-            
+
             explanation_text = scrolledtext.ScrolledText(explanation_frame, wrap=tk.WORD, width=70, height=8, font=("Helvetica", 11))
             explanation_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
             explanation_text.insert(tk.END, self.current_scenario["explanation"])
             explanation_text.config(state=tk.DISABLED)
-            
+
             ttk.Label(scenario_frame, text="Now, make your decision:", font=("Helvetica", 12)).pack(pady=5)
-        
-        # Decision buttons
+
+        # Decision buttons for UI
         button_frame = ttk.Frame(scenario_frame)
         button_frame.pack(pady=20)
-        
+
         # Button styling
         style = ttk.Style()
         style.configure("Green.TButton", background="green")
         style.configure("Red.TButton", background="red")
-        
+
         legitimate_btn = ttk.Button(button_frame, text="Legitimate Email", command=lambda: self.process_answer(False), width=20)
         legitimate_btn.pack(side=tk.LEFT, padx=20)
 
         phishing_btn = ttk.Button(button_frame, text="Phishing Email", command=lambda: self.process_answer(True), width=20)
         phishing_btn.pack(side=tk.LEFT, padx=20)
-
-        
 
     def update_timer(self):
         if self.timer_running:
@@ -664,7 +417,11 @@ Need help? Visit the Dropbox Help Center.
             self.root.after(1000, self.update_timer)
 
     def process_answer(self, guessed_phishing):
-        elapsed_time = int(time.time() - self.start_time)
+        now = time.time()
+        if not hasattr(self, "_last_answer_time"):
+            self._last_answer_time = self.start_time
+        elapsed_time = int(now - self._last_answer_time)
+        # self._last_answer_time = now  # Add this back if program unhappy
         self.total_time += elapsed_time
 
         correct = self.current_scenario["is_phishing"] == guessed_phishing
@@ -678,10 +435,13 @@ Need help? Visit the Dropbox Help Center.
         self.score_label.config(text=f"Score: {self.score}")
         self.scenario_index += 1
         self.progress_label.config(text=f"Progress: {self.scenario_index}/{len(self.scenarios)}")
-
-        self.display_next_scenario()
+        if self.scenario_index < len(self.scenarios):
+            self.display_next_scenario()
+        else:
+            self.show_game_results()
 
     def show_game_results(self):
+        self.timer_running = False
         # Clear content
         for widget in self.content_frame.winfo_children():
             widget.destroy()
@@ -707,10 +467,24 @@ Need help? Visit the Dropbox Help Center.
         feedback_frame = ttk.Frame(results_frame)
         feedback_frame.pack(pady=10)
 
+        # Just a hint of difference between runs
+        good_results_feedback = [
+            "Great job! You have a good eye for spotting phishing attempts.",
+            "Excellent work! Your awareness is impressive.",
+            "You nailed it! Keep up the vigilance."
+        ]
+
+        bad_results_feedback = [
+            "Keep practicing! Phishing can be tricky to spot.",
+            "Don't worry, with more practice you'll improve!",
+            "Watch out for the red flags next time. You'll get better!"
+        ]
+
+
         if self.correct_answers >= len(self.scenarios) * 0.7:
-            feedback = "Great job! You have a good eye for spotting phishing attempts."
+            feedback = random.choice(good_results_feedback)
         else:
-            feedback = "Keep practicing! Phishing can be tricky to spot."
+            feedback = random.choice(bad_results_feedback)
 
         ttk.Label(feedback_frame, text=feedback, font=("Helvetica", 12)).pack(pady=10)
 
@@ -730,7 +504,7 @@ def main():
     try:
         root.iconbitmap("assets/icon.ico")
     except:
-        pass  # Gracefully ignore if icon file is missing
+        pass  
     root.mainloop()
 
 if __name__ == "__main__":

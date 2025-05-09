@@ -16,7 +16,7 @@ def generate_scenarios(n=2):
     client = genai.Client(api_key=KEY)
 
     scenarios = []
-    name = "Robert"
+    
 
     for i in range(n):
         is_phishing = (i % 2 == 0)
@@ -35,7 +35,7 @@ Return your response in JSON format with the following structure:
 
 {'Include typical phishing red flags like suspicious sender address, urgent language, suspicious links, grammar errors, or requests for sensitive information.' if is_phishing else 'Make it look like a genuine email from a real company with proper formatting, no suspicious elements, and realistic content.'}
 
-Additional Information: Participant name is {name}
+
 Do not use Markdown formatting in the output. Return plain JSON only.
 """
 
@@ -60,16 +60,8 @@ Do not use Markdown formatting in the output. Return plain JSON only.
         except Exception as e:
             print(f"Error on iteration {i+1}: {e}")
 
-        # SLEEP PREVENTS TIMEOUT FROM GOOGLE
+        # SLEEP PREVENTS TIMEOUT FROM GOOGLE THEY DONT LIKE SPAM
         time.sleep(2)
 
     return scenarios
 
-
-# if __name__ == "__main__":
-#     results = generate_scenarios(10)
-#     for i, r in enumerate(results, 1):
-#         print(f"\n--- Scenario {i} ---")
-#         print("EMAIL:\n", r.get("email"))
-#         print("PHISHING:", r.get("is_phishing"))
-#         print("EXPLANATION:\n", r.get("explanation"))
